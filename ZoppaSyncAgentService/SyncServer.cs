@@ -50,8 +50,8 @@ namespace ZoppaSyncAgentService
                     }
                 }
             }
-            catch (Exception) {
-                throw;
+            catch (Exception ex) {
+                logger.WriteError(ex);
             }
             finally {
                 baseListener.Stop();
@@ -63,13 +63,13 @@ namespace ZoppaSyncAgentService
                                           ushort usePort, 
                                           ZoppaSyncLibrary.Helper.ILogger logger)
         {
-            var sqlHelper = await SqliteHelper.Create("zoppa_sync.db", logger);
+            using var sqlHelper = await SqliteHelper.Create("zoppa_sync.db", logger);
 
             var fileInfos = CollectFileInformation(sqlHelper, usePath, usePort, logger);
 
             var catalog = new StringBuilder();
             foreach (var file in fileInfos) {
-                catalog.Append($"{file.FullName.Substring(usePath.Length + 1)}{SyncDefine.CATALOG_PARAM_SPLIT_CHAR}{file.SHA256}{SyncDefine.CATALOG_SPLIT_CHAR}");
+                catalog.Append($"{(file.IsFile ? ' ' : '*' )}{file.FullName.Substring(usePath.Length + 1)}{SyncDefine.CATALOG_PARAM_SPLIT_CHAR}{file.SHA256}{SyncDefine.CATALOG_SPLIT_CHAR}");
             }
 
             // ダウンロードカタログを返す
@@ -85,38 +85,34 @@ namespace ZoppaSyncAgentService
                     }
 
                     if (File.Exists(path)) {
-                        using var compressor = new Compressor();
-                        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read)) {
-                            var bytes = new byte[fs.Length];
-                            fs.Read(bytes, 0, bytes.Length);
-
-                            var compressedData = compressor.Wrap(bytes);
-                            await stream.WriteAsync(BitConverter.GetBytes((long)compressedData.Length));
-                            await stream.WriteAsync(compressedData);
-                        }
+                        await stream.WriteFileAsync(path);
                     }
                     else {
-                        int a = 50;
+                        await stream.WriteAsync(BitConverter.GetBytes((long)0));
                     }
                 }
             }
         }
 
-        private static List<FileInformation> CollectFileInformation(SqliteHelper sqlHelper,
+        private static List<StorageInformation> CollectFileInformation(SqliteHelper sqlHelper,
                                                                     string usePath,
                                                                     ushort usePort,
                                                                     ZoppaSyncLibrary.Helper.ILogger logger)
         {
-            var fileInfos = new List<FileInformation>();
+            var fileInfos = new List<StorageInformation>();
             var dirInfo = new DirectoryInfo(usePath);
             if (dirInfo.Exists && usePort != 0) {
-                var coninfos = new ConcurrentBag<FileInformation>();
+                var coninfos = new ConcurrentBag<StorageInformation>();
+
+                foreach (var info in dirInfo.EnumerateDirectories("*", SearchOption.AllDirectories)) {
+                    fileInfos.Add(new StorageInformation(info.FullName));
+                }
 
                 var tasks = new List<Task>();
                 foreach (var info in dirInfo.EnumerateFiles("*", SearchOption.AllDirectories)) {
                     var tk = Task.Factory.StartNew(() => {
                         coninfos.Add(
-                            new FileInformation(info.FullName, info.LastWriteTime, info.Length)
+                            new StorageInformation(info.FullName, info.LastWriteTime, info.Length)
                         );
                     });
                     tasks.Add(tk);
@@ -124,13 +120,13 @@ namespace ZoppaSyncAgentService
                 Task.WaitAll(tasks.ToArray());
 
                 SHA256 crypto = SHA256.Create();
-                fileInfos = sqlHelper.GetFileInformation(
-                    new List<FileInformation>(coninfos), 
+                fileInfos.AddRange(sqlHelper.GetFileInformation(
+                    new List<StorageInformation>(coninfos), 
                     logger, 
-                    (inbytes) => {
-                        return crypto.ComputeHash(inbytes).ConvertToString();
+                    (instream) => {
+                        return crypto.ComputeHash(instream).ConvertToString();
                     }
-                );
+                ));
             }
             return fileInfos;
         }

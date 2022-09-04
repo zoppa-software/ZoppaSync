@@ -15,9 +15,9 @@ namespace ZoppaSyncCommand
             _cancellation = new CancellationTokenSource();
             
             SyncClient.SyncRequest(
-                "localhost", 
-                @"C:\Users\tiinii\source\repos\ZoppaSync",
-                @"C:\Users\tiinii\source\repos\ZoppaSync_copy",
+                "localhost",
+                @"D:\GitRepos\ZoppaSync",
+                @"D:\GitRepos\ZoppaSync_copy",
                 _cancellation, 
                 logger
             ).Wait();

@@ -18,9 +18,6 @@ namespace ZoppaSyncAgentService
         }
         public override Task StartAsync(CancellationToken cancellationToken)
         {
-            //var task = SqliteHelper.Create("zoppa_sync.db", this._logger);
-            //task.Wait();
-            //this._sqliteHelper = task.Result;
             return base.StartAsync(cancellationToken);
         }
 

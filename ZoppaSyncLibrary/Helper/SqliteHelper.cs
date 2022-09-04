@@ -75,12 +75,12 @@ CREATE TABLE ""Targets"" (
             }
         }
 
-        public List<FileInformation> GetFileInformation(List<FileInformation> infos, ILogger logger, Func<byte[], string> calcHash)
+        public List<StorageInformation> GetFileInformation(
+            List<StorageInformation> infos, ILogger logger, Func<Stream, string> calcHash)
         {
-            var ans = new List<(FileInformation info, bool isRegisted)>();
+            var ans = new List<(StorageInformation info, bool isRegisted)>();
 
             if (this._connection != null) {
-                //SHA256 crypto = SHA256.Create();
                 this._connection.Open();
 
                 SqliteTransaction? transaction = null;
@@ -103,9 +103,15 @@ CREATE TABLE ""Targets"" (
                                     ans.Add((info, true));
                                 }
                                 else {
-                                    //var hash = BitConverter.ToString(crypto.ComputeHash(File.ReadAllBytes(info.FullName)));
-                                    info.SHA256 = calcHash(File.ReadAllBytes(info.FullName));
-                                    ans.Add((info, false));
+                                    try {
+                                        using var fs = new FileStream(info.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
+                                        info.SHA256 = calcHash(fs);
+                                        ans.Add((info, false));
+                                    }
+                                    catch (Exception) {
+                                        info.SHA256 = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+                                        ans.Add((info, false));
+                                    }
                                 }
                             }
                         }
